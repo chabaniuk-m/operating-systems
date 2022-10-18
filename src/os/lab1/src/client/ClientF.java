@@ -4,6 +4,6 @@ import java.io.IOException;
 
 public class ClientF extends Client {
     public static void main(String[] args) throws IOException, InterruptedException {
-        run(true);
+        run(true, args);
     }
 }

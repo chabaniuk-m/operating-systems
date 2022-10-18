@@ -15,18 +15,32 @@ import java.util.InputMismatchException;
 import java.util.Scanner;
 
 public class AServer {
+    private static int nFSoftFails = 0;
+    private static int nGSoftFails = 0;
+    private static final int maxAttempts = 3;
+    private static final ServerSocketChannel exitServer;
+    private static ServerSocketChannel server;
+
+    static {
+        try {
+            exitServer = ServerSocketChannel.open();
+            exitServer.bind(new InetSocketAddress("localhost", 5000));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        ServerSocketChannel server = ServerSocketChannel.open();
-        SocketAddress socketAddr = new InetSocketAddress("localhost", 444);
+        server = ServerSocketChannel.open();
+        SocketAddress socketAddr = new InetSocketAddress("localhost", 4000);
         server.bind(socketAddr);
         Selector selector = Selector.open();
         server.configureBlocking(false);
         server.register(selector, SelectionKey.OP_ACCEPT);
 
         Scanner scanner = new Scanner(System.in);
-        int x = readX(scanner);
-        CancellationThread cancellation = new CancellationThread(scanner);
+        int x = readX();
+        CancellationThread cancellation = new CancellationThread(scanner, selector);
         cancellation.start();
 
         SocketChannel []client = new SocketChannel[2];
@@ -40,66 +54,122 @@ public class AServer {
         }
         Result[] arr = new Result[2];
         int limit = 2;
+        StringBuilder hardFailFuncs = new StringBuilder();
         for (int j = 0; j < limit; j++) {
             selector.select();
-            SelectionKey key = selector.selectedKeys().iterator().next();
             var res = readResult(server);
             arr[Math.min(j, 1)] = res;
             if (res.getV() < 4) {
                 switch (res) {
-                    case F_HARD_FAIL -> processHardFail("f");
+                    case F_HARD_FAIL -> hardFailFuncs.append("f");
                     case F_SOFT_FAIL -> {
                         if (!cancellation.isInterrupted()) cancellation.interrupt();
-                        ++limit;
-                        processSoftFail("f", selector, limit - 2);
+                        limit = processSoftFail(hardFailFuncs, "f", selector, limit);
+                        cancellation = new CancellationThread(scanner, selector);
+                        cancellation.start();
                     }
                     case F_TRUE -> System.out.printf("f(%d) = true\n", x);
                     case F_FALSE -> System.out.printf("f(%d) = false\n", x);
                 }
             } else {
                 switch (res) {
-                    case G_HARD_FAIL -> processHardFail("g");
+                    case G_HARD_FAIL -> hardFailFuncs.append("g");
                     case G_SOFT_FAIL -> {
                         if (!cancellation.isInterrupted()) cancellation.interrupt();
-                        ++limit;
-                        processSoftFail("g", selector, limit - 2);
+                        limit = processSoftFail(hardFailFuncs, "g", selector, limit);
+                        cancellation = new CancellationThread(scanner, selector);
+                        cancellation.start();
                     }
                     case G_TRUE -> System.out.printf("g(%d) = true\n", x);
                     case G_FALSE -> System.out.printf("g(%d) = false\n", x);
                 }
             }
         }
+        processHardFail(hardFailFuncs.toString());
         if (arr[0] == Result.F_TRUE && arr[1] == Result.G_TRUE) {
             System.out.printf("f(%d) ∧ g(%d) = true\n", x, x);
         } else {
             System.out.printf("f(%d) ∧ g(%d) = false\n", x, x);
         }
-        System.exit(0);
+        cancellation.interrupt();
+        exit(0);
     }
 
-    private static void processSoftFail(String funcName, Selector selector, int attempts) throws IOException {
-        System.out.println("❗Soft fail of function " + funcName);
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Try again? y/n: ");
-        String repl = scanner.next();
-        if (repl.equals("y")) {
-            selector.select();
-            SelectionKey key = selector.selectedKeys().iterator().next();
-            SocketChannel client = ((ServerSocketChannel) key.channel()).accept();
-            client.write(ByteBuffer.wrap("y".getBytes()));
-            client.close();
-        } else if (repl.equals("c")) {
-            System.out.println("✖ Execution of the program is cancelled");
+    public static synchronized void exit(int code) throws IOException, InterruptedException {
+        server.close();
+        ByteBuffer buffer = ByteBuffer.wrap(("" + code).getBytes());
+        SocketChannel client = exitServer.accept();
+        client.write(buffer);
+        client.close();
+        client = exitServer.accept();
+        client.write(buffer);
+        client.close();
+        System.exit(code);
+    }
+
+    private static void processHardFail(String funcs) {
+        boolean exit = false;
+        if (!funcs.isEmpty()) {
+            System.out.println("❌ Hard fail of function " + funcs.charAt(0));
+            exit = true;
+            if (funcs.length() == 2) {
+                System.out.println("❌ Hard fail of function " + funcs.charAt(1));
+            }
+        }
+        if (exit) {
             System.exit(1);
+        }
+    }
+
+    public static void interruptClient(Selector selector) throws IOException {
+        selector.select();
+        SelectionKey key = selector.selectedKeys().iterator().next();
+        SocketChannel client = ((ServerSocketChannel) key.channel()).accept();
+        client.write(ByteBuffer.wrap("n".getBytes()));
+        client.close();
+    }
+
+    private static int processSoftFail(StringBuilder hardFailFuncs, String funcName, Selector selector, int limit) throws IOException, InterruptedException {
+        if (hardFailFuncs.toString().equals("")) {
+            ++limit;
+            processSoftFail(funcName, selector);
         } else {
-            selector.select();
-            SelectionKey key = selector.selectedKeys().iterator().next();
-            SocketChannel client = ((ServerSocketChannel) key.channel()).accept();
-            client.write(ByteBuffer.wrap("n".getBytes()));
-            client.close();
-            System.out.println("🤷🏻 It is impossible to define the result of computation\nbecause of soft fail of function " + funcName);
-            System.out.println("Number of attempts to obtain the result - " + attempts);
-            System.exit(1);
+            interruptClient(selector);
+        }
+        return limit;
+    }
+
+    private static void processSoftFail(String funcName, Selector selector) throws IOException, InterruptedException {
+        System.out.println("❗Soft fail of function " + funcName);
+
+        if (funcName.equals("f")) {
+            if (nFSoftFails++ == maxAttempts) {
+                interruptClient(selector);
+                System.out.println("✖ Maximum amount of attempts to obtain value is reached");
+                System.exit(2);
+            }
+        } else {
+            if (nGSoftFails++ == maxAttempts) {
+                interruptClient(selector);
+                System.out.println("✖ Maximum amount of attempts to obtain value is reached");
+                System.exit(2);
+            }
+        }
+        Scanner scanner = new Scanner(System.in);
+        for (int i = 0; i < 1; i++) {
+            System.out.print("Try again? y/n: ");
+            String repl = scanner.next();
+            if (repl.equals("y")) {
+                selector.select();
+                SelectionKey key = selector.selectedKeys().iterator().next();
+                SocketChannel client = ((ServerSocketChannel) key.channel()).accept();
+                client.write(ByteBuffer.wrap("y".getBytes()));
+                client.close();
+            } else if (repl.equals("n")) {
+                System.out.println("🤷🏻 It is impossible to define the result of computation\nbecause of soft fail of function " + funcName);
+                System.out.println("Number of attempts to obtain the result - " + (funcName.equals("f") ? nFSoftFails : nGSoftFails));
+                exit(1);
+            } else --i;
         }
     }
 
@@ -110,9 +180,9 @@ public class AServer {
         return Result.valueOf(Integer.parseInt(new String(Arrays.copyOf(buffer.array(), 1))));
     }
 
-    private static int readX(Scanner scanner) {
+    private static int readX() {
         int x;
-        scanner = new Scanner(System.in);
+        Scanner scanner = new Scanner(System.in);
         while (true) {
             System.out.print("x=");
             try {
@@ -127,10 +197,5 @@ public class AServer {
             }
         }
         return x;
-    }
-
-    private static void processHardFail(String funcName) {
-        System.out.println("❌ Hard fail of function " + funcName);
-        System.exit(1);
     }
 }

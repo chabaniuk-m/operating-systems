@@ -8,6 +8,9 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Random;
@@ -16,12 +19,28 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public abstract class Client {
-    protected final static SocketAddress address = new InetSocketAddress("localhost", 444);
+    protected static SocketAddress address;
     protected static int counter = 0;
 
-    protected static void run(boolean isF) throws IOException, InterruptedException {
+    protected static void run(boolean isF, String[] args) throws IOException, InterruptedException {
+        address = new InetSocketAddress("localhost", 4000);
         int x = requestX();
+        Thread t = new Thread(() -> {
+            SocketAddress cancellationAddress = new InetSocketAddress("localhost", 5000);
+            try {
+                SocketChannel client = SocketChannel.open(cancellationAddress);
+                ByteBuffer buffer = ByteBuffer.allocate(256);
+                System.out.println("Before exit");
+                int bytes = client.read(buffer);
+                System.out.println("exit");
+                System.exit(bytes > 0 ? Integer.parseInt(new String(Arrays.copyOf(buffer.array(), bytes))) : 0);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        t.start();
         calcAndSendResult(x, isF);
+        t.join();
     }
 
     private static void calcAndSendResult(int x, boolean isF) throws IOException, InterruptedException {
@@ -63,11 +82,11 @@ public abstract class Client {
     private static int requestX() throws IOException {
         SocketChannel client = SocketChannel.open(address);
         ByteBuffer buffer = ByteBuffer.allocate(256);
-        client.read(buffer);
+        int bytes = client.read(buffer);
         buffer.flip();
         int x = 0;
         try {
-            String str = toStr(buffer);
+            String str = toStr(buffer, bytes);
             x = Integer.parseInt(str);
             System.out.println("x = " + x);
         } catch (NumberFormatException e) {
@@ -77,16 +96,8 @@ public abstract class Client {
         return x;
     }
 
-    private static String toStr(ByteBuffer buffer) {
-        byte nil = buffer.get(buffer.limit() - 1);
-        int len = buffer.limit();
-        for (int i = 0; i < buffer.limit(); i++) {
-            if (buffer.array()[i] == nil) {
-                len = i + 1;
-                break;
-            }
-        }
-        return new String(Arrays.copyOf(buffer.array(), len));
+    private static String toStr(ByteBuffer buffer, int bytes) {
+        return new String(Arrays.copyOf(buffer.array(), bytes));
     }
 
     private static void sendResult(Optional<Optional<Boolean>> res, int x, boolean isF) throws IOException, InterruptedException {
@@ -118,14 +129,14 @@ public abstract class Client {
         if (softFail) {
             ByteBuffer buffer = ByteBuffer.allocate(256);
             client = SocketChannel.open(address);
-            client.read(buffer);
-            String repl = toStr(buffer);
+            int bytes = client.read(buffer);
+            String repl = toStr(buffer, bytes);
             System.out.println(repl);
-            if (repl.equals("n")) System.exit(0);
             client.close();
-            calcAndSendResult(x, isF);
+            if (!repl.equals("n")) {
+                calcAndSendResult(x, isF);
+            }
         }
         System.out.println("🏁 finish");
-        System.exit(0);
     }
 }
