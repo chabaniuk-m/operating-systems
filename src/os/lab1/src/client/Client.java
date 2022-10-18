@@ -8,9 +8,6 @@ import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.Random;
@@ -22,7 +19,7 @@ public abstract class Client {
     protected static SocketAddress address;
     protected static int counter = 0;
 
-    protected static void run(boolean isF, String[] args) throws IOException, InterruptedException {
+    protected static void run(boolean isF) throws IOException, InterruptedException {
         address = new InetSocketAddress("localhost", 4000);
         int x = requestX();
         Thread t = new Thread(() -> {
