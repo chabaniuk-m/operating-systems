@@ -20,6 +20,7 @@ public class AServer {
     private static final int maxAttempts = 3;
     private static final ServerSocketChannel exitServer;
     private static ServerSocketChannel server;
+    private static int x;
 
     static {
         try {
@@ -39,7 +40,7 @@ public class AServer {
         server.register(selector, SelectionKey.OP_ACCEPT);
 
         Scanner scanner = new Scanner(System.in);
-        int x = readX();
+        x = readX();
         CancellationThread cancellation = new CancellationThread(scanner, selector);
         cancellation.start();
 
@@ -104,6 +105,11 @@ public class AServer {
         client = exitServer.accept();
         client.write(buffer);
         client.close();
+        if (code == 1) {
+            System.out.printf("f(%d) ∧ g(%d) = <fail>\n", x, x);
+        } else if (code == 3) {
+            System.out.printf("f(%d) ∧ g(%d) = <undefined>\n", x, x);
+        }
         System.exit(code);
     }
 
@@ -117,7 +123,7 @@ public class AServer {
             }
         }
         if (exit) {
-            System.exit(1);
+            System.exit(2);
         }
     }
 
@@ -168,7 +174,7 @@ public class AServer {
             } else if (repl.equals("n")) {
                 System.out.println("🤷🏻 It is impossible to define the result of computation\nbecause of soft fail of function " + funcName);
                 System.out.println("Number of attempts to obtain the result - " + (funcName.equals("f") ? nFSoftFails : nGSoftFails));
-                exit(1);
+                exit(2);
             } else --i;
         }
     }
@@ -189,11 +195,13 @@ public class AServer {
                 x = Integer.parseInt(scanner.next());
                 if (!(0 <= x && x <= 2)) {
                     System.out.printf("%d is not the domain of definition of functions f & g\n", x);
-                } else {
-                    break;
+                    exit(3);
                 }
+                break;
             } catch (NumberFormatException | InputMismatchException e) {
                 System.out.println("Enter a natural number");
+            } catch (IOException | InterruptedException e) {
+                throw new RuntimeException(e);
             }
         }
         return x;

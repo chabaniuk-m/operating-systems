@@ -21,7 +21,6 @@ public abstract class Client {
 
     protected static void run(boolean isF) throws IOException, InterruptedException {
         address = new InetSocketAddress("localhost", 4000);
-        int x = requestX();
         Thread t = new Thread(() -> {
             SocketAddress cancellationAddress = new InetSocketAddress("localhost", 5000);
             try {
@@ -36,6 +35,7 @@ public abstract class Client {
             }
         });
         t.start();
+        int x = requestX();
         calcAndSendResult(x, isF);
         t.join();
     }
