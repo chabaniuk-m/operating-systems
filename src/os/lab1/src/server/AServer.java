@@ -44,13 +44,14 @@ public class AServer {
         CancellationThread cancellation = new CancellationThread(scanner, selector);
         cancellation.start();
 
-        SocketChannel []client = new SocketChannel[2];
+        SocketChannel client;
         for (int i = 0; i < 2; i++) {
             selector.select();
             SelectionKey key = selector.selectedKeys().iterator().next();
             if (key.isAcceptable()) {
-                client[i] = server.accept();
-                client[i].write(ByteBuffer.wrap((x + "").getBytes()));
+                client = server.accept();
+                client.write(ByteBuffer.wrap((x + "").getBytes()));
+                client.close();
             }
         }
         Result[] arr = new Result[2];
@@ -86,7 +87,7 @@ public class AServer {
                 }
             }
         }
-        processHardFail(hardFailFuncs.toString());
+        processPossibleHardFail(hardFailFuncs.toString());
         if (arr[0] == Result.F_TRUE && arr[1] == Result.G_TRUE) {
             System.out.printf("f(%d) ∧ g(%d) = true\n", x, x);
         } else {
@@ -113,7 +114,7 @@ public class AServer {
         System.exit(code);
     }
 
-    private static void processHardFail(String funcs) {
+    private static void processPossibleHardFail(String funcs) throws IOException, InterruptedException {
         boolean exit = false;
         if (!funcs.isEmpty()) {
             System.out.println("❌ Hard fail of function " + funcs.charAt(0));
@@ -123,7 +124,7 @@ public class AServer {
             }
         }
         if (exit) {
-            System.exit(2);
+            exit(2);
         }
     }
 
