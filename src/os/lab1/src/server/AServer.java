@@ -41,7 +41,7 @@ public class AServer {
 
         Scanner scanner = new Scanner(System.in);
         x = readX();
-        CancellationThread cancellation = new CancellationThread(scanner, selector);
+        CancellationThread cancellation = new CancellationThread(scanner);
         cancellation.start();
 
         SocketChannel client;
@@ -67,7 +67,7 @@ public class AServer {
                     case F_SOFT_FAIL -> {
                         if (!cancellation.isInterrupted()) cancellation.interrupt();
                         limit = processSoftFail(hardFailFuncs, "f", selector, limit);
-                        cancellation = new CancellationThread(scanner, selector);
+                        cancellation = new CancellationThread(scanner);
                         cancellation.start();
                     }
                     case F_TRUE -> System.out.printf("f(%d) = true\n", x);
@@ -79,7 +79,7 @@ public class AServer {
                     case G_SOFT_FAIL -> {
                         if (!cancellation.isInterrupted()) cancellation.interrupt();
                         limit = processSoftFail(hardFailFuncs, "g", selector, limit);
-                        cancellation = new CancellationThread(scanner, selector);
+                        cancellation = new CancellationThread(scanner);
                         cancellation.start();
                     }
                     case G_TRUE -> System.out.printf("g(%d) = true\n", x);
@@ -110,6 +110,8 @@ public class AServer {
             System.out.printf("f(%d) ∧ g(%d) = <fail>\n", x, x);
         } else if (code == 3) {
             System.out.printf("f(%d) ∧ g(%d) = <undefined>\n", x, x);
+        } else if (code == 5) {
+            System.out.printf("f(%d) ∧ g(%d) = <execution canceled>\n", x, x);
         }
         System.exit(code);
     }
@@ -124,7 +126,7 @@ public class AServer {
             }
         }
         if (exit) {
-            exit(2);
+            exit(1);
         }
     }
 
@@ -153,7 +155,7 @@ public class AServer {
             if (nFSoftFails++ == maxAttempts) {
                 interruptClient(selector);
                 System.out.println("✖ Maximum amount of attempts to obtain value is reached");
-                System.exit(2);
+                System.exit(3);
             }
         } else {
             if (nGSoftFails++ == maxAttempts) {
