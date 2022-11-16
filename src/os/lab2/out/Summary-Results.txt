@@ -1,0 +1,8 @@
+Scheduling Type: Pre-emptive
+Scheduling Name: Earliest deadline first
+Simulation Run Time: 200
+Percentage of downtime: 13.5%
+Process #	  CPU use time	Executed
+1				66 (t.u.)		23
+2				50 (t.u.)		25
+3				56 (t.u.)		14
