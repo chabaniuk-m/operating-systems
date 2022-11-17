@@ -81,10 +81,16 @@ public class SchedulingAlgorithm {
   private static void updateProcesses(List<Process> processes, int i) {
       for (int j = 0; j < processes.size(); j++) {
           Process process = processes.get(j);
-          if (i % process.period == 0) {
+          int b = i % process.period;
+          if (b == 0) {
+              // the next period of the process started
               if (process.available)
                   throw new RuntimeException("Deadline of process " + j + " is missed");
+              // thus the process if available for execution
               process.available = true;
+          } else if (process.available && b > process.deadline) {
+              // if the deadline of process if missed
+              throw new RuntimeException("Deadline of process " + j + " is missed");
           }
       }
   }
